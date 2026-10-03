@@ -4,9 +4,9 @@ import org.springframework.kafka.annotation.KafkaListener;
 
 public class KafkaConsumerBug {
 
-    @KafkaListener(topics = "orders")   // VIBE-006: missing groupId
+    @KafkaListener(topics = "orders")   // CLI kafka (warning) · MCP VIBE-006 (warning): missing groupId
     public void consume(String message) throws InterruptedException {
-        Thread.sleep(10);               // VIBE-002: Thread.sleep() inside KafkaListener method
+        Thread.sleep(10);               // CLI blocking-kafka · MCP VIBE-006: blocking call in a listener
         System.out.println(message);
     }
 }
