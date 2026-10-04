@@ -7,23 +7,26 @@ This project contains exactly **3 plain `.java` files** that produce **3 CRITICA
 ## Run
 
 ```bash
-npx java-vibe-guard@2.0.0 .
+npx java-vibe-guard@2.1.0 .
 ```
 
 Exit code `1` (CRITICAL findings present).
 
-## Expected output (java-vibe-guard 2.0.0)
+## Expected output (java-vibe-guard 2.1.0)
 
-Real output, captured with `npx java-vibe-guard@2.0.0 . --no-color`:
+Real output, captured with `npx java-vibe-guard@2.1.0 . --no-color`:
 
 ```
 java-vibe-guard — vibe coding detector for Java/Spring Boot
 Scanning: .  (3 files)
 
 ❌ CRITICAL: Thread.sleep() detected in @KafkaListener method → src/main/java/demo/KafkaConsumerBug.java:9
-  Evidence: documented mechanism, no benchmark of our own — a blocking call delays the consumer's next poll(); past max.poll.interval.ms the group coordinator considers the consumer dead and rebalances the group (Kafka consumer docs)
+  Evidence (measured, java-vibe-guard verify/blocking-kafka — @KafkaListener): the damage appears only when max.poll.records x time per record > max.poll.interval.ms (with the defaults, 500 records and 300 s: more than 600 ms per record). Above it, in an accelerated setup (max.poll.interval.ms lowered to 10 s), the consumer left the group on every batch, every offset commit failed and the group entered a reprocessing loop: 0 records/s committed, each record delivered ~10 times. Below it, the same blocking call caused no measured damage: no rebalances, no duplicates, throughput = consumers / time per record. Measured on kafka-clients 3.6.2, classic group protocol with eager rebalancing, spring-kafka AckMode BATCH; the cooperative protocol, KIP-848 and AckMode RECORD were not measured
+  Source: https://github.com/Joaquinriosheredia/java-vibe-guard/blob/a6f32ef/cli/verify/blocking-kafka/results/criteria.md#L7-L47
 ❌ CRITICAL: blocking Future.get() detected in @Async method → src/main/java/demo/OrderService.java:22
-  Evidence: documented mechanism, no benchmark of our own — the call holds a thread of the @Async executor / @Scheduled scheduler / event pool for its whole duration; under load the pool saturates
+  Evidence (measured, java-vibe-guard verify/blocking — @Async): on Spring Boot's default @Async executor (8 platform threads, unbounded queue), a call that holds the thread caps throughput at threads / call duration: 39.9-40.0 tasks/s with 8 threads, 79.8 with 16. Above that the queue grows at (load - capacity) and 98-99.5% of latency is queue wait; the same call without holding the thread did not queue. With virtual threads enabled (spring.threads.virtual.enabled=true) the executor did not saturate
+  Source: https://github.com/Joaquinriosheredia/java-vibe-guard/blob/c4e5ddd/cli/verify/blocking/results/criteria.md#L7-L38
+  Evidence (@Scheduled, @EventListener): documented mechanism, no benchmark of our own — the call holds a thread of the scheduler / event pool for its whole duration; under load the pool saturates
 ❌ CRITICAL: Reactive blocking call '.block()' inside Spring bean — pins a thread under load; use reactive composition (.flatMap, .map, .then) instead → src/main/java/demo/ReactiveController.java:14
   Evidence: documented mechanism, no benchmark of our own — blocking pins a Reactor thread (Netty event loop or Schedulers.parallel() worker) for the whole I/O wait; with few such threads, throughput collapses under load
 ⚠️  WARNING: @KafkaListener without explicit groupId → src/main/java/demo/KafkaConsumerBug.java:7
@@ -37,7 +40,12 @@ Scanning: .  (3 files)
 🚨 3 CRITICAL issue(s) found — fix before deploying to production.
 ```
 
-The `Evidence:` lines show what each rule rests on. None of these three rules has a benchmark of its own yet, and the output says so instead of borrowing a figure from a benchmark that measured something else.
+The `Evidence` lines show what each rule rests on:
+
+- **`blocking-kafka`** and **`blocking` under `@Async`** cite measured results from pre-registered experiments in the java-vibe-guard repo (`cli/verify/`). The `Source:` line points to the results, pinned to a commit.
+- `blocking` under `@Scheduled` / `@EventListener` (not present here) and `reactor-block` have no benchmark of their own yet. The output says "documented mechanism", instead of borrowing a figure from a benchmark that measured something else.
+
+Since 2.1.0, `blocking` under `@Async` is reported as WARNING when the module's base `application.properties` / `application.yml` sets `spring.threads.virtual.enabled=true`. This demo has no build file or Spring config, so it stays CRITICAL.
 
 ## Files and bugs
 
