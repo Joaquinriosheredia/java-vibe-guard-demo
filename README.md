@@ -2,23 +2,25 @@
 
 Minimal reproducible demo for [java-vibe-guard](https://github.com/Joaquinriosheredia/java-vibe-guard).
 
-This project contains exactly **3 plain `.java` files** that produce **3 CRITICAL findings** when scanned with the CLI — no Maven, no Gradle, no runtime dependencies.
+This project contains **4 plain `.java` files** — 3 with bugs, plus `AsyncConfig.java`, which enables `@Async` with `@EnableAsync` — that produce **3 CRITICAL findings** when scanned with the CLI. No Maven, no Gradle, no runtime dependencies.
+
+Without `@EnableAsync`, `@Async` has no effect: Spring runs the method on the caller's thread. That is why `AsyncConfig.java` is here, and why the CLI (since 2.3.0) reports a blocking call under `@Async` only when the scanned project contains `@EnableAsync`.
 
 ## Run
 
 ```bash
-npx java-vibe-guard@2.2.0 .
+npx java-vibe-guard@2.3.0 .
 ```
 
 Exit code `1` (CRITICAL findings present).
 
-## Expected output (java-vibe-guard 2.2.0)
+## Expected output (java-vibe-guard 2.3.0)
 
-Real output, captured with `npx java-vibe-guard@2.2.0 . --no-color`:
+Real output, captured with `npx java-vibe-guard@2.3.0 . --no-color`:
 
 ```
 java-vibe-guard — vibe coding detector for Java/Spring Boot
-Scanning: .  (3 files)
+Scanning: .  (4 files)
 
 ❌ CRITICAL: Thread.sleep() detected in @KafkaListener method → src/main/java/demo/KafkaConsumerBug.java:9
   Evidence (measured, java-vibe-guard verify/blocking-kafka — @KafkaListener): the damage appears only when max.poll.records x time per record > max.poll.interval.ms (with the defaults, 500 records and 300 s: more than 600 ms per record). Above it, in an accelerated setup (max.poll.interval.ms lowered to 10 s), the consumer left the group on every batch, every offset commit failed and the group entered a reprocessing loop: 0 records/s committed, each record delivered ~10 times. Below it, the same blocking call caused no measured damage: no rebalances, no duplicates, throughput = consumers / time per record. Measured on kafka-clients 3.6.2, classic group protocol with eager rebalancing, spring-kafka AckMode BATCH; the cooperative protocol, KIP-848 and AckMode RECORD were not measured
@@ -66,6 +68,7 @@ java-vibe-guard ships two independent Java engines with different rule ids: the 
 | `KafkaConsumerBug.java` | no `@RetryableTopic` / DLQ | `kafka` WARNING :7 | — |
 | `OrderService.java` | `future.get()` (blocking) inside `@Async` | `blocking` CRITICAL :22 | — (no MCP rule covers it) |
 | `OrderService.java` | N+1: one repository call per loop iteration | — (no CLI rule) | `VIBE-003` CRITICAL :20 |
+| `AsyncConfig.java` | none: `@EnableAsync`, so `@Async` above takes effect | — | — |
 
 Notes:
 
