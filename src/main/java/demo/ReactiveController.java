@@ -11,7 +11,7 @@ public class ReactiveController {
     @GetMapping("/data")
     @Async                               // async boundary — must NOT block
     public Mono<String> getData() {
-        String result = Mono.just("hello").block();  // CLI reactor-block · MCP VIBE-002 — fired by the Spring bean + Reactor import, not by @Async
+        String result = Mono.just("hello").block();  // CLI blocking (via @Async, since 2.4.0) · MCP VIBE-002 (via the Spring bean + Reactor import, not @Async)
         return Mono.just(result);
     }
 }
